@@ -528,7 +528,7 @@ Python-prosjekt laget med Servidor.
           }
         })(), platform: "linux", release: "", arch: "", user: "" },
         node: "Python",
-        temp_c: Number(data.temp_c) || 0,
+        temp_c: data.temp_c === null || data.temp_c === void 0 || data.temp_c === "" ? null : Number.isFinite(Number(data.temp_c)) ? Number(data.temp_c) : null,
         remote: true,
         now: Date.now()
       };
@@ -1516,10 +1516,14 @@ Python-prosjekt laget med Servidor.
       const memory = stats.memory || {};
       const disk = stats.disk || {};
       const uptime = stats.uptime || {};
+      const temperature = Number.isFinite(Number(stats.temp_c)) && stats.temp_c !== null ? Number(stats.temp_c) : null;
       const cores = cpu.cores || 1;
       const cpuPercent = Math.round(Number(cpu.percent) || 0);
       const ramPercent = Math.round(Number(memory.percent) || 0);
       const diskPercent = Math.round(Number(disk.percent) || 0);
+      const temperaturePercent = temperature === null ? 0 : Math.max(0, Math.min(100, temperature));
+      const temperatureColor = temperature === null || temperature < 70 ? "var(--accent)" : temperature < 85 ? "var(--warning)" : "var(--danger)";
+      const temperatureLabel = temperature === null ? "Temperatursensor ikke tilgjengelig" : temperature < 70 ? "Normal temperatur" : temperature < 85 ? "Varm" : "Sv\xE6rt varm";
       history2.push(cpuPercent);
       if (history2.length > 34) history2.shift();
       host.innerHTML = `
@@ -1578,6 +1582,20 @@ Python-prosjekt laget med Servidor.
           <div class="tiny" style="margin-top:5px">${stats.remote ? "via Tailscale" : `Servidor ${esc(fmtUptime(uptime.process))}`}</div>
         </div>
       </div>`;
+      host.insertAdjacentHTML("beforeend", `
+      <div class="card stat-card">
+        <div class="stat-ring">
+          <div class="ring" style="--p:${temperaturePercent};--ring-color:${temperatureColor}">
+            <span class="ring-value">${temperature === null ? "\u2014" : `${Math.round(temperature)}<small>\xB0C</small>`}</span>
+          </div>
+        </div>
+        <div class="stat-info">
+          <div class="stat-label">CPU-temperatur</div>
+          <div class="stat-main">${temperature === null ? "\u2014" : `${temperature.toFixed(1)} <small>\xB0C</small>`}</div>
+          <div class="stat-note">${temperatureLabel}</div>
+          <div class="tiny" style="margin-top:5px">M\xE5les p\xE5 Ubuntu-serveren</div>
+        </div>
+      </div>`);
     }
     function renderProjects(projects) {
       const host = root.querySelector("#homeProjectList");
@@ -1683,6 +1701,7 @@ Python-prosjekt laget med Servidor.
           if (disposed || !root.isConnected) return;
           state2.stats = fresh;
           const cpu = Math.round(Number(fresh.cpu?.percent) || 0);
+          const temperature = Number.isFinite(Number(fresh.temp_c)) && fresh.temp_c !== null ? Number(fresh.temp_c) : null;
           history2.push(cpu);
           if (history2.length > 34) history2.shift();
           const ring = root.querySelector(".stat-card .ring");
@@ -1699,6 +1718,21 @@ Python-prosjekt laget med Servidor.
           const ramNote = root.querySelectorAll(".stat-card .stat-note");
           if (ramNote[1] && fresh.memory) {
             ramNote[1].textContent = `av ${fmtBytes(fresh.memory.total || 0)}`;
+          }
+          const temperatureCard = root.querySelectorAll(".stat-card")[4];
+          if (temperatureCard) {
+            const ring2 = temperatureCard.querySelector(".ring");
+            const value = temperatureCard.querySelector(".ring-value");
+            const main = temperatureCard.querySelector(".stat-main");
+            const note = temperatureCard.querySelector(".stat-note");
+            const color = temperature === null || temperature < 70 ? "var(--accent)" : temperature < 85 ? "var(--warning)" : "var(--danger)";
+            if (ring2) {
+              ring2.style.setProperty("--p", temperature === null ? 0 : Math.max(0, Math.min(100, temperature)));
+              ring2.style.setProperty("--ring-color", color);
+            }
+            if (value) value.innerHTML = temperature === null ? "\u2014" : `${Math.round(temperature)}<small>\xB0C</small>`;
+            if (main) main.innerHTML = temperature === null ? "\u2014" : `${temperature.toFixed(1)} <small>\xB0C</small>`;
+            if (note) note.textContent = temperature === null ? "Temperatursensor ikke tilgjengelig" : temperature < 70 ? "Normal temperatur" : temperature < 85 ? "Varm" : "Sv\xE6rt varm";
           }
         } catch {
         }

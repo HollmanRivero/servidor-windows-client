@@ -504,7 +504,9 @@ async function request(path, { method = 'GET', body, timeout = 0 } = {}) {
       uptime: { system: 0, process: 0 },
       host: { hostname: (() => { try { return new URL(getServerUrl()).hostname; } catch { return 'ubuntu'; } })(), platform: 'linux', release: '', arch: '', user: '' },
       node: 'Python',
-      temp_c: Number(data.temp_c) || 0,
+      temp_c: data.temp_c === null || data.temp_c === undefined || data.temp_c === ''
+        ? null
+        : Number.isFinite(Number(data.temp_c)) ? Number(data.temp_c) : null,
       remote: true,
       now: Date.now(),
     };

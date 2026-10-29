@@ -1041,7 +1041,7 @@ body.edge-shell .app {
 /* ---------- 10. Hjem ---------- */
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 14px;
 }
@@ -3559,6 +3559,12 @@ body.edge-shell .app {
 
   .tb-search {
     width: min(340px, 32vw);
+  }
+}
+
+@media (max-width: 1450px) and (min-width: 1121px) {
+  .stat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 

@@ -22,7 +22,8 @@ export async function mount(root, ctx) {
   let cwd = status.workspace || '/';
   if (ctx.query.get('cwd')) cwd = ctx.query.get('cwd');
   else if (project) {
-    cwd = [status.workspace || '/', project, dir]
+    const baseParts = project.startsWith('/') ? [project, dir] : [status.workspace || '/', project, dir];
+    cwd = baseParts
       .filter(Boolean)
       .join('/')
       .replace(/\/+/g, '/');
@@ -163,12 +164,16 @@ export async function mount(root, ctx) {
         updatePrompt();
         appendLine(`→ ${cwd}`, 'meta');
       } else {
-        if (result.cwd && result.cwd !== cwd) {
+        const cwdChanged = Boolean(result.cwd && result.cwd !== cwd);
+        if (cwdChanged) {
           cwd = result.cwd;
           updatePrompt();
         }
         if (result.stdout) appendLine(result.stdout.replace(/\n+$/, ''), 'stdout');
         if (result.stderr) appendLine(result.stderr.replace(/\n+$/, ''), 'stderr');
+        if (cwdChanged && !result.stdout && !result.stderr && result.code === 0) {
+          appendLine(`→ ${cwd}`, 'meta');
+        }
         if (result.code !== 0 || result.timedOut) {
           const badge = document.createElement('div');
           badge.className = 'term-line meta';

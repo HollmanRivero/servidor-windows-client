@@ -11,6 +11,7 @@
   var SERVER_KEY = "servidor.serverUrl";
   var DEFAULT_SERVER = "";
   var cachedWorkspace = "";
+  var previousCwd = "";
   var memoryStore = /* @__PURE__ */ new Map();
   function storeGet(key) {
     try {
@@ -295,19 +296,33 @@
     return { recent };
   }
   function mapShell(data, fallbackCwd) {
+    let stdout = String(data.stdout || "");
+    let cwd = data.cwd || fallbackCwd || "";
+    const pwdMatch = stdout.match(/\n?__SERVIDOR_PWD__:([^\r\n]+)\r?\n?$/);
+    if (pwdMatch) {
+      const detected = pwdMatch[1].trim();
+      if (detected) cwd = detected;
+      stdout = stdout.slice(0, stdout.length - pwdMatch[0].length);
+    }
+    if (fallbackCwd && cwd && cwd !== fallbackCwd) {
+      previousCwd = fallbackCwd;
+    }
     return {
-      stdout: data.stdout || "",
+      stdout,
       stderr: data.stderr || "",
       code: typeof data.exit_code === "number" ? data.exit_code : 0,
-      cwd: data.cwd || fallbackCwd || "",
+      cwd,
       duration: Number(data.duration_ms || 0),
       timedOut: Boolean(data.timed_out),
       truncated: false,
       remote: true
     };
   }
-  function transcript(messages) {
-    return (messages || []).filter((message) => message && message.content).map((message) => `${message.role === "assistant" ? "Assistent" : "Bruker"}: ${message.content}`).join("\n\n");
+  function transcript(messages, project = "") {
+    const lines = (messages || []).filter((message) => message && message.content).map((message) => `${message.role === "assistant" ? "Assistent" : "Bruker"}: ${message.content}`).join("\n\n");
+    if (!cachedWorkspace) return lines;
+    const ctx = `[Systemkontekst: Ubuntu-server. Prosjektmappen (workspace) er ${cachedWorkspace}${project ? `. Aktivt prosjekt: ${cachedWorkspace}/${project}` : ""}. Bruk denne stien i stedet for ~/projects.]`;
+    return `${ctx}\n\n${lines}`;
   }
   function cleanRel(value) {
     const clean = String(value || "").replace(/\\/g, "/").replace(/^\/+/, "").trim();
@@ -636,27 +651,44 @@ Python-prosjekt laget med Servidor.
         }
       }
       const start = body && body.cwd || cachedWorkspace || "";
-      const cdMatch = command.match(/^cd\s+(.+)$/i);
-      if (cdMatch && !/[;&|]/.test(cdMatch[1])) {
-        const target = cdMatch[1].trim().replace(/^['"]|['"]$/g, "");
-        const targetExpr = target.startsWith("~") ? target : shQuote(target);
-        const prefix2 = start ? `cd -- ${shQuote(start)} && ` : "";
+      const enterStart = start ? `cd -- ${shQuote(start)} 2>/dev/null || cd -- ${shQuote(cachedWorkspace || "/")} 2>/dev/null || true\n` : "";
+      const cdMatch = command.match(/^cd(?:\s+(.+))?$/i);
+      if (cdMatch && !/[;&|\n]/.test(cdMatch[1] || "")) {
+        const rawTarget = (cdMatch[1] || "").trim().replace(/^['"]|['"]$/g, "");
+        const normalizedTarget = rawTarget.replace(/\s*-\s*/g, "-");
+        let cdScript;
+        if (!rawTarget || rawTarget === "~") {
+          cdScript = 'cd -- "$HOME"';
+        } else if (rawTarget === "-") {
+          cdScript = previousCwd ? `cd -- ${shQuote(previousCwd)}` : 'cd -- "$HOME"';
+        } else if (rawTarget.startsWith("~/")) {
+          const sub = rawTarget.slice(2);
+          const subNorm = normalizedTarget.slice(2);
+          cdScript = `if [ -d "$HOME"/${shQuote(sub)} ]; then cd -- "$HOME"/${shQuote(sub)}; elif [ -d "$HOME"/${shQuote(subNorm)} ]; then cd -- "$HOME"/${shQuote(subNorm)}; elif [ -n ${shQuote(cachedWorkspace)} ] && [ -d ${shQuote(cachedWorkspace)}/${shQuote(sub.replace(/^projects\/+/, ""))} ]; then cd -- ${shQuote(cachedWorkspace)}/${shQuote(sub.replace(/^projects\/+/, ""))}; else cd -- "$HOME"/${shQuote(sub)}; fi`;
+        } else {
+          const tQuote = shQuote(rawTarget);
+          const nQuote = shQuote(normalizedTarget);
+          const wsQuote = shQuote(cachedWorkspace);
+          const isRelName = !rawTarget.startsWith("/") && rawTarget !== "." && rawTarget !== "..";
+          cdScript = isRelName ? `if [ -d ${tQuote} ]; then cd -- ${tQuote}; elif [ -d ${nQuote} ]; then cd -- ${nQuote}; elif [ -n ${wsQuote} ] && [ -d ${wsQuote}/${tQuote} ]; then cd -- ${wsQuote}/${tQuote}; elif [ -n ${wsQuote} ] && [ -d ${wsQuote}/${nQuote} ]; then cd -- ${wsQuote}/${nQuote}; elif [ -d "$HOME/projects"/${tQuote} ]; then cd -- "$HOME/projects"/${tQuote}; elif [ -d "$HOME/projects"/${nQuote} ]; then cd -- "$HOME/projects"/${nQuote}; elif [ -d "$HOME"/${tQuote} ]; then cd -- "$HOME"/${tQuote}; else cd -- ${tQuote}; fi` : `if [ -d ${tQuote} ]; then cd -- ${tQuote}; elif [ -d ${nQuote} ]; then cd -- ${nQuote}; else cd -- ${tQuote}; fi`;
+        }
         const result = await raw("/shell", {
           method: "POST",
-          body: { command: `${prefix2}cd -- ${targetExpr} && pwd`, cwd: "", timeout: 15 }
+          body: { command: `${enterStart}${cdScript} && pwd`, cwd: "", timeout: 15 }
         });
         const lines = String(result.stdout || "").trim().split("\n").filter(Boolean);
         const newCwd = lines.length ? lines[lines.length - 1] : start;
         if (result.exit_code === 0) {
+          if (start && newCwd && newCwd !== start) previousCwd = start;
           return { stdout: "", stderr: "", code: 0, cwd: newCwd, duration: 0, cd: true, remote: true };
         }
         return mapShell(result, start);
       }
-      const prefix = start ? `cd -- ${shQuote(start)} && ` : "";
+      const wrappedCommand = `${enterStart}${command}\n__servidor_ec=$?\nprintf '\\n__SERVIDOR_PWD__:%s\\n' "$(pwd)"\nexit $__servidor_ec`;
       const data = await raw("/shell", {
         method: "POST",
         body: {
-          command: `${prefix}${command}`,
+          command: wrappedCommand,
           cwd: "",
           timeout: Math.min(Number(body && body.timeout || 120), 600)
         },
@@ -669,10 +701,11 @@ Python-prosjekt laget med Servidor.
     }
     if (pathname === "/api/chat") {
       const provider = body && body.provider || "deepseek";
+      const project = body && body.project || "";
       const path2 = ["gemini", "deepseek", "techai"].includes(provider) ? `/chat/${provider}` : `/chat/provider/${encodeURIComponent(provider)}`;
       const data = await raw(path2, {
         method: "POST",
-        body: { message: transcript(body && body.messages || []) },
+        body: { message: transcript(body && body.messages || [], project) },
         timeout: 18e4
       });
       return {
@@ -3246,7 +3279,8 @@ Python-prosjekt laget med Servidor.
     let cwd = status.workspace || "/";
     if (ctx.query.get("cwd")) cwd = ctx.query.get("cwd");
     else if (project) {
-      cwd = [status.workspace || "/", project, dir].filter(Boolean).join("/").replace(/\/+/g, "/");
+      const baseParts = project.startsWith("/") ? [project, dir] : [status.workspace || "/", project, dir];
+      cwd = baseParts.filter(Boolean).join("/").replace(/\/+/g, "/");
     }
     const promptLabel = (path) => `${path || "/"} $`;
     root.innerHTML = `
@@ -3367,12 +3401,16 @@ Python-prosjekt laget med Servidor.
           updatePrompt();
           appendLine(`\u2192 ${cwd}`, "meta");
         } else {
-          if (result.cwd && result.cwd !== cwd) {
+          const cwdChanged = Boolean(result.cwd && result.cwd !== cwd);
+          if (cwdChanged) {
             cwd = result.cwd;
             updatePrompt();
           }
           if (result.stdout) appendLine(result.stdout.replace(/\n+$/, ""), "stdout");
           if (result.stderr) appendLine(result.stderr.replace(/\n+$/, ""), "stderr");
+          if (cwdChanged && !result.stdout && !result.stderr && result.code === 0) {
+            appendLine(`\u2192 ${cwd}`, "meta");
+          }
           if (result.code !== 0 || result.timedOut) {
             const badge = document.createElement("div");
             badge.className = "term-line meta";

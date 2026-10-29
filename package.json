@@ -1,0 +1,21 @@
+{
+  "name": "servidor-ui",
+  "version": "2.1.0",
+  "private": true,
+  "description": "Lokal Servidor UI (Windows 11) som styrer Ubuntu-serveren via Tailscale",
+  "scripts": {
+    "build:ui": "esbuild ui/js/app.js --bundle --format=iife --target=chrome110 --outfile=ui/app.bundle.js"
+  },
+  "keywords": [
+    "servidor",
+    "windows-11",
+    "fluent",
+    "ubuntu",
+    "tailscale"
+  ],
+  "author": "Servidor",
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="nb" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#1f1f1f" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <title>Servidor</title>
+    <link rel="stylesheet" href="css/app.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="titlebar" id="titlebar">
+        <div class="tb-brand">
+          <div class="tb-logo" id="tbLogo"></div>
+          <div class="tb-title">Servidor <span class="tb-sub">Ubuntu</span></div>
+        </div>
+
+        <button class="tb-search" id="paletteBtn" type="button" title="Søk og kommandoer (Ctrl+K)">
+          <span class="tb-search-ico" id="tbSearchIcon"></span>
+          <span class="tb-search-text">Søk i Servidor</span>
+          <span class="kbd">Ctrl K</span>
+        </button>
+
+        <div class="tb-controls" id="winControls">
+          <button class="win-btn" id="winMin" type="button" title="Minimer" aria-label="Minimer"></button>
+          <button class="win-btn" id="winMax" type="button" title="Maksimer" aria-label="Maksimer"></button>
+          <button class="win-btn win-close" id="winClose" type="button" title="Lukk" aria-label="Lukk"></button>
+        </div>
+      </header>
+
+      <div class="app-body">
+        <aside class="nav" id="nav" aria-label="Navigasjon">
+          <div class="nav-scroll" id="navItems"></div>
+          <div class="nav-footer" id="navFooter"></div>
+        </aside>
+        <main class="view" id="view" tabindex="-1"></main>
+      </div>
+    </div>
+
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+    <div id="overlayRoot"></div>
+
+    <noscript>Servidor trenger JavaScript.</noscript>
+    <script src="app.bundle.js"></script>
+  </body>
+</html>
